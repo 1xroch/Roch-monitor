@@ -63,8 +63,19 @@ impl Default for Settings {
     }
 }
 
+#[cfg(windows)]
 pub fn directory() -> PathBuf {
     std::env::var_os("APPDATA").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(".")).join("RochMonitor")
+}
+
+#[cfg(not(windows))]
+pub fn directory() -> PathBuf {
+    std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute())
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")))
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("RochMonitor")
 }
 
 fn path() -> PathBuf {

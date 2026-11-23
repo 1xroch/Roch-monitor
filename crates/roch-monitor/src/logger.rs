@@ -26,7 +26,8 @@ fn field(s: &str) -> String {
 
 /// Where logs go by default: Documents\Roch Monitor.
 pub fn default_directory() -> PathBuf {
-    let base = std::env::var_os("USERPROFILE").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
+    let home = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+    let base = std::env::var_os(home).map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
     base.join("Documents").join("Roch Monitor")
 }
 
@@ -45,7 +46,13 @@ impl CsvLogger {
             let st = shared.lock();
             let mut header = vec!["Date".to_owned(), "Time".to_owned()];
             let mut cols = Vec::new();
-            for d in st.ordered_devices() {
+            let devices = st.ordered_devices();
+            for d in &devices {
+                let name = if devices.iter().any(|other| other.id != d.id && other.name == d.name) {
+                    format!("{} ({})", d.name, d.id)
+                } else {
+                    d.name.clone()
+                };
                 for (i, row) in st.sensors.iter().enumerate() {
                     if row.info.device != d.id || skip.contains(&row.info.key) {
                         continue;
@@ -55,7 +62,7 @@ impl CsvLogger {
                     } else {
                         format!(" [{}]", row.info.unit)
                     };
-                    header.push(field(&format!("{}: {}{}", d.name, row.info.label, unit)));
+                    header.push(field(&format!("{name}: {}{unit}", row.info.label)));
                     cols.push((i, row.info.decimals));
                 }
             }

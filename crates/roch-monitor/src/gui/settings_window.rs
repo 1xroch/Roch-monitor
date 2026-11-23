@@ -126,6 +126,8 @@ impl SettingsWindow {
         let size = vec2(720.0, 620.0);
         let mut builder = egui::ViewportBuilder::default()
             .with_title("Roch Monitor — Settings")
+            .with_app_id("RochMonitor")
+            .with_decorations(!cfg!(target_os = "linux"))
             .with_inner_size(size)
             .with_min_inner_size([560.0, 420.0])
             .with_window_level(if settings.appearance.always_on_top {
@@ -153,6 +155,21 @@ impl SettingsWindow {
             }
             let palette = theme::pal(ui.ctx());
             settings_style(ui, &palette);
+            if cfg!(target_os = "linux") && class != ViewportClass::EmbeddedWindow {
+                egui::Panel::top("settings-title")
+                    .resizable(false)
+                    .frame(egui::Frame::new().fill(palette.panel).inner_margin(egui::Margin::symmetric(12, 5)))
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            super::native::drag_title(ui, RichText::new("Roch Monitor — Settings").strong());
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                if ui.button("×").on_hover_text("Close Settings").clicked() {
+                                    self.open = false;
+                                }
+                            });
+                        });
+                    });
+            }
             egui::Panel::bottom("settings-footer")
                 .frame(egui::Frame::new().fill(palette.bg).inner_margin(egui::Margin::symmetric(12, 8)))
                 .show(ui, |ui| {
@@ -243,7 +260,9 @@ impl SettingsWindow {
                 super::app::tests::record(&format!("theme:{}", mode.name()), _response.rect);
             }
         });
-        hint(ui, "Follow Windows switches with Settings > Personalisation > Colours.");
+        if cfg!(windows) {
+            hint(ui, "Follow Windows switches with Settings > Personalisation > Colours.");
+        }
         section(ui, "Colour scheme");
         ui.horizontal_wrapped(|ui| {
             for preset in appearance::presets() {
@@ -380,7 +399,7 @@ impl SettingsWindow {
                     },
                 );
             });
-        hint(ui, "Fixed-width fonts keep the columns most even. Consolas is the Roch tools' own.");
+        hint(ui, "Fixed-width fonts keep the columns most even.");
         section(ui, "Size");
         ui.horizontal(|ui| {
             ui.label("Text size");
@@ -437,6 +456,15 @@ impl SettingsWindow {
         let a = &mut s.appearance;
         section(ui, "On screen");
         ui.checkbox(&mut a.always_on_top, "Keep Roch Monitor above other programs");
+        if cfg!(windows) {
+            self.windows_options(ui, s, info);
+        }
+        section(ui, "Size");
+        hint(ui, "The window opens at the size it was closed at.");
+    }
+
+    fn windows_options(&mut self, ui: &mut Ui, s: &mut Settings, info: &Context2) {
+        let a = &mut s.appearance;
         let mut opacity = a.opacity * 100.0;
         ui.horizontal(|ui| {
             ui.label("Opacity");
@@ -501,9 +529,6 @@ impl SettingsWindow {
         if let Some(e) = &self.startup_error {
             ui.label(RichText::new(e).color(theme::pal(ui.ctx()).warn));
         }
-
-        section(ui, "Size");
-        hint(ui, "The window opens at the size it was closed at.");
     }
 
     fn sensors(ui: &mut Ui, s: &mut Settings, info: &mut Context2, outcome: &mut Outcome) {
@@ -533,15 +558,17 @@ impl SettingsWindow {
                 }
             });
         });
-        section(ui, "DDR5 modules");
-        if ui
-            .checkbox(&mut s.pmic_adc, "Read each PMIC's measured rails (ADC)")
-            .on_hover_text("One write per channel to the PMIC's ADC selector, R30h, restored afterwards. Off reads only the settings.")
-            .changed()
-        {
-            outcome.restart_sensors = true;
+        if cfg!(windows) {
+            section(ui, "DDR5 modules");
+            if ui
+                .checkbox(&mut s.pmic_adc, "Read each PMIC's measured rails (ADC)")
+                .on_hover_text("One write per channel to the PMIC's ADC selector, R30h, restored afterwards. Off reads only the settings.")
+                .changed()
+            {
+                outcome.restart_sensors = true;
+            }
+            hint(ui, "Changing it restarts the sensors, and with them the statistics.");
         }
-        hint(ui, "Changing it restarts the sensors, and with them the statistics.");
         section(ui, "Hidden sensors");
         ui.horizontal(|ui| {
             ui.label(format!("{} hidden of {}", s.hidden.len(), info.sensors));

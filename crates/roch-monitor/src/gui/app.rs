@@ -12,8 +12,9 @@ use eframe::egui::{
     pos2, vec2,
 };
 use roch_sensors::engine::{Engine, MIN_INTERVAL_MS, State};
+#[cfg(windows)]
 use roch_sensors::hw::Driver;
-use roch_sensors::model::{DeviceKind, format_value};
+use roch_sensors::model::{DeviceKind, Group, format_value};
 use roch_sensors::sources::{Options, factories};
 use roch_sensors::system::SystemInfo;
 
@@ -23,7 +24,9 @@ use super::rows::{self, Row};
 use super::settings::Settings;
 use super::settings_window::{self, GRAPH_WINDOWS, INTERVALS, SettingsWindow};
 use super::theme::{self, Palette, body, pal, row};
-use super::tray::{Tray, TrayCommand, TrayValue, icon_digits};
+#[cfg(windows)]
+use super::tray::TrayCommand;
+use super::tray::{Tray, TrayValue, icon_digits};
 use crate::logger::{self, CsvLogger};
 use crate::report;
 
@@ -55,12 +58,15 @@ pub struct MonitorApp {
     options: Options,
     settings: Settings,
     search: String,
+    /// The Voltages chip: shows only voltage readings, independent of the search text.
+    voltages_only: bool,
     show_hidden: bool,
     show_sources: bool,
     logger: Option<CsvLogger>,
     notice: Option<(String, Instant)>,
     hardware_note: Option<String>,
     /// Whether PawnIO opened when the window started, for the Sources window.
+    #[cfg(windows)]
     pawnio: Result<(), String>,
     search_id: egui::Id,
     /// False under test, so a test never writes the user's settings file.
@@ -98,6 +104,12 @@ fn start_engine(ctx: &Context, sys: &SystemInfo, options: Options, settings: &Se
 
 /// Why the driver-based sensors are missing, when they are. PawnIO answering is enough; inpoutx64
 /// is only asked when PawnIO is not there, so a machine with PawnIO never loads it.
+#[cfg(not(windows))]
+fn driver_note(_sys: &SystemInfo, options: &Options, _pawnio: &Result<(), String>) -> Option<String> {
+    (!options.hardware).then(|| "CPU temperatures, CPU power, board and DIMM sensors are off (--no-hardware).".into())
+}
+
+#[cfg(windows)]
 fn driver_note(sys: &SystemInfo, options: &Options, pawnio: &Result<(), String>) -> Option<String> {
     if !options.hardware {
         return Some(
@@ -117,12 +129,18 @@ fn driver_note(sys: &SystemInfo, options: &Options, pawnio: &Result<(), String>)
     })
 }
 
+#[cfg(windows)]
 fn pawnio_state(options: &Options) -> Result<(), String> {
     if options.hardware && options.driver.pawnio() {
         roch_sensors::hw::pawnio::available()
     } else {
         Err("not used".into())
     }
+}
+
+#[cfg(not(windows))]
+fn pawnio_state(_options: &Options) -> Result<(), String> {
+    Err("not used".into())
 }
 
 impl MonitorApp {
@@ -146,11 +164,16 @@ impl MonitorApp {
             options,
             settings,
             search: String::new(),
+            #[cfg(target_os = "linux")]
+            voltages_only: options.board_voltages,
+            #[cfg(not(target_os = "linux"))]
+            voltages_only: false,
             show_hidden: false,
             show_sources: false,
             logger: None,
             notice: None,
             hardware_note,
+            #[cfg(windows)]
             pawnio: pawnio_state(&options),
             search_id: egui::Id::unique("roch_monitor_search"),
             persist,
@@ -199,8 +222,10 @@ impl MonitorApp {
                 self.show_from_tray(ctx);
             }
         }
+        #[cfg(windows)]
         let commands: Vec<TrayCommand> =
             self.tray.as_ref().map(|t| t.commands.try_iter().collect()).unwrap_or_default();
+        #[cfg(windows)]
         for cmd in commands {
             match cmd {
                 TrayCommand::Show => self.show_from_tray(ctx),
@@ -254,7 +279,8 @@ impl MonitorApp {
         let st = self.engine.lock();
         let line = |key: &str| -> Option<(String, String, String)> {
             let r = st.sensor(key)?;
-            let device = st.device(&r.info.device).map(short_device).unwrap_or_default();
+            let numbered = rows::number_gpus(&st);
+            let device = st.device(&r.info.device).map(|d| short_device(d, numbered)).unwrap_or_default();
             let value = format_value(r.stat.current, &r.info.unit, r.info.decimals);
             // "GPU Temperature" already says whose it is; "Core Max" needs "CPU" in front.
             let name = if r.info.label.starts_with(&device) {
@@ -313,8 +339,13 @@ impl MonitorApp {
     }
 
     /// Whether the window is dark now: the theme setting, or Windows' own for Follow Windows.
-    fn is_dark(&mut self) -> bool {
+    fn is_dark(&mut self, ctx: &Context) -> bool {
         let theme = self.settings.appearance.theme;
+        if cfg!(target_os = "linux")
+            && let Some(system) = ctx.system_theme()
+        {
+            return theme.is_dark(system == egui::Theme::Dark);
+        }
         if theme == appearance::ThemeMode::System
             && self.system_dark.1.is_none_or(|at| at.elapsed() >= SYSTEM_THEME_CHECK)
         {
@@ -326,7 +357,7 @@ impl MonitorApp {
     /// Apply whatever in the appearance has changed since the last frame: palette and sizes, the
     /// font, zoom, window level, opacity and title bars. Each is applied once per change.
     pub(crate) fn apply_appearance(&mut self, ctx: &Context) {
-        let dark = self.is_dark();
+        let dark = self.is_dark(ctx);
         let a = &self.settings.appearance;
         if self.applied_font.as_deref() != Some(a.font_family.as_str()) {
             theme::install_fonts(ctx, &a.font_family);
@@ -401,13 +432,19 @@ impl MonitorApp {
     fn header(&mut self, ui: &mut Ui, p: &Palette) {
         let ctx = ui.ctx().clone();
         ui.horizontal(|ui| {
-            ui.label(RichText::new("ROCH MONITOR").font(theme::bold(16.0)).color(p.text));
+            super::native::drag_title(ui, RichText::new("ROCH MONITOR").font(theme::bold(16.0)).color(p.text));
             ui.label(
                 RichText::new(format!("v{}", env!("CARGO_PKG_VERSION")))
                     .font(theme::regular(body() - 1.0))
                     .color(p.muted),
             );
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if cfg!(target_os = "linux") {
+                    if ui.button("×").on_hover_text("Close Roch Monitor").clicked() {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    }
+                    ui.add_space(8.0);
+                }
                 let (text, fill, color) = if self.hardware_note.is_none() {
                     ("LIVE · READ ONLY", p.header, p.text)
                 } else {
@@ -419,7 +456,8 @@ impl MonitorApp {
                 ui.painter().galley(r.min + vec2(10.0, 5.0), galley, color);
                 ui.add_space(8.0);
                 // Light, Dark and Follow Windows are on Settings → Appearance.
-                let settings_button = egui::Button::new(RichText::new("⚙ Settings").font(theme::bold(body())));
+                let settings_label = if cfg!(windows) { "⚙ Settings" } else { "Settings" };
+                let settings_button = egui::Button::new(RichText::new(settings_label).font(theme::bold(body())));
                 let response = ui.add(settings_button).on_hover_text(
                     "Colours, font, text size, layout and window: everything about how Roch Monitor looks",
                 );
@@ -438,8 +476,16 @@ impl MonitorApp {
             }
             {
                 let st = self.engine.lock();
+                // Two of the same card read "2× AMD Radeon RX 7900 XT", so the line fits on one row.
+                let mut gpus: Vec<(&str, usize)> = Vec::new();
                 for d in st.ordered_devices().into_iter().filter(|d| d.kind == DeviceKind::Gpu) {
-                    parts.push(d.name.clone());
+                    match gpus.iter_mut().find(|(name, _)| *name == d.name) {
+                        Some((_, n)) => *n += 1,
+                        None => gpus.push((&d.name, 1)),
+                    }
+                }
+                for (name, n) in gpus {
+                    parts.push(if n > 1 { format!("{n}× {name}") } else { name.to_owned() });
                 }
             }
             ui.label(RichText::new(parts.join("  ·  ")).font(theme::regular(body())).color(p.muted));
@@ -450,13 +496,20 @@ impl MonitorApp {
         ui.horizontal_wrapped(|ui| {
             let search = egui::TextEdit::singleline(&mut self.search)
                 .id(self.search_id)
-                .hint_text("Search sensors  (Ctrl+F)")
-                .desired_width(230.0);
+                .hint_text("Search  (Ctrl+F)")
+                .desired_width(180.0);
             ui.add(search);
             if !self.search.is_empty() && ui.small_button("×").on_hover_text("Clear the search").clicked() {
                 self.search.clear();
             }
-            ui.add_space(6.0);
+            if ui
+                .selectable_label(self.voltages_only, "Voltages")
+                .on_hover_text("Show only voltage readings; the search still narrows them")
+                .clicked()
+            {
+                self.voltages_only = !self.voltages_only;
+            }
+            ui.add_space(4.0);
 
             ui.label(RichText::new("Poll").color(p.muted));
             let current =
@@ -483,8 +536,10 @@ impl MonitorApp {
             ui.add_space(6.0);
 
             let log_label = match &self.logger {
-                Some(l) => format!("■ Stop log ({})", l.rows()),
-                None => "● Log CSV".to_owned(),
+                Some(l) if cfg!(windows) => format!("■ Stop log ({})", l.rows()),
+                Some(l) => format!("Stop log ({})", l.rows()),
+                None if cfg!(windows) => "● Log CSV".to_owned(),
+                None => "Log CSV".to_owned(),
             };
             let log_button = egui::Button::new(RichText::new(log_label).color(if self.logger.is_some() {
                 p.accent
@@ -511,6 +566,11 @@ impl MonitorApp {
             }
         });
 
+        #[cfg(target_os = "linux")]
+        if self.voltages_only {
+            self.board_voltages(ui, p);
+        }
+
         if let Some(note) = &self.hardware_note {
             ui.add_space(4.0);
             Frame::new()
@@ -532,6 +592,30 @@ impl MonitorApp {
             }
         }
         ui.add_space(4.0);
+    }
+
+    #[cfg(target_os = "linux")]
+    fn board_voltages(&mut self, ui: &mut Ui, p: &Palette) {
+        use roch_sensors::sources::board_voltages;
+
+        if !self.options.hardware || !board_voltages::supported(&self.sys) {
+            return;
+        }
+        if self.options.board_voltages {
+            let state = self.engine.lock();
+            if let Some(source) = state.sources.iter().find(|s| s.name == board_voltages::SOURCE_NAME) {
+                ui.label(RichText::new(&source.status).color(p.muted));
+            }
+        } else if ui
+            .add_enabled(self.logger.is_none(), egui::Button::new("Read board voltages"))
+            .on_hover_text("Request administrator access for the board voltage reader")
+            .on_disabled_hover_text("Stop the CSV log first so the new voltages can be included in the next log.")
+            .clicked()
+        {
+            self.options.board_voltages = true;
+            let (name, factory) = board_voltages::factory(&self.sys);
+            self.engine.add_source(name, factory);
+        }
     }
 
     // -- the list -----------------------------------------------------------------------------
@@ -572,6 +656,7 @@ impl MonitorApp {
                 &st,
                 &rows::View {
                     search: &self.search,
+                    only: self.voltages_only.then_some(Group::Voltages),
                     hidden: &self.settings.hidden,
                     show_hidden: self.show_hidden,
                     collapsed: &self.settings.collapsed,
@@ -582,10 +667,12 @@ impl MonitorApp {
         };
         if list.is_empty() {
             ui.add_space(30.0);
-            let text = if self.search.is_empty() {
-                "Waiting for the first readings…"
-            } else {
+            let text = if !self.search.is_empty() {
                 "No sensor matches the search."
+            } else if self.voltages_only {
+                "No voltage readings yet."
+            } else {
+                "Waiting for the first readings…"
             };
             ui.vertical_centered(|ui| ui.label(RichText::new(text).color(p.muted)));
             return;
@@ -698,6 +785,7 @@ impl MonitorApp {
         let (series, now) = {
             let st = self.engine.lock();
             let now = self.engine.shared().epoch().elapsed().as_secs_f32();
+            let numbered = rows::number_gpus(&st);
             let series: Vec<Series> = self
                 .settings
                 .graphs
@@ -705,7 +793,7 @@ impl MonitorApp {
                 .enumerate()
                 .filter_map(|(i, key)| {
                     let row = st.sensor(key)?;
-                    let short = st.device(&row.info.device).map(short_device).unwrap_or_default();
+                    let short = st.device(&row.info.device).map(|d| short_device(d, numbered)).unwrap_or_default();
                     Some(Series {
                         key: key.clone(),
                         label: format!("{} · {}", row.info.label, short),
@@ -780,25 +868,28 @@ impl MonitorApp {
         }
         let mut open = true;
         egui::Window::new("Sources").open(&mut open).default_width(760.0).resizable(true).show(ctx, |ui| {
-            let pawnio = match (&self.pawnio, self.options.hardware, self.options.driver) {
-                (_, false, _) => "PawnIO: not used (--no-hardware)".to_owned(),
-                (_, true, Driver::InpOut) => "PawnIO: not used (--driver inpoutx64)".to_owned(),
-                (Ok(()), true, _) => "PawnIO: installed, open".to_owned(),
-                (Err(e), true, _) => format!("PawnIO: {e}"),
-            };
-            // Asked without loading it: inpoutx64 is only loaded by a source PawnIO could not serve.
-            let inpout = match roch_sensors::hw::inpout::loaded() {
-                Some(Ok(d)) => format!("inpoutx64: loaded from {}", d.path().display()),
-                Some(Err(e)) => format!("inpoutx64: {e}"),
-                None => "inpoutx64: not loaded".to_owned(),
-            };
-            ui.label(RichText::new(pawnio).color(p.muted));
-            ui.label(RichText::new(inpout).color(p.muted));
-            ui.label(
-                RichText::new(format!("Administrator: {}", if self.sys.elevated { "yes" } else { "no" }))
-                    .color(p.muted),
-            );
-            ui.separator();
+            #[cfg(windows)]
+            {
+                let pawnio = match (&self.pawnio, self.options.hardware, self.options.driver) {
+                    (_, false, _) => "PawnIO: not used (--no-hardware)".to_owned(),
+                    (_, true, Driver::InpOut) => "PawnIO: not used (--driver inpoutx64)".to_owned(),
+                    (Ok(()), true, _) => "PawnIO: installed, open".to_owned(),
+                    (Err(e), true, _) => format!("PawnIO: {e}"),
+                };
+                // Asked without loading it: inpoutx64 is only loaded by a source PawnIO could not serve.
+                let inpout = match roch_sensors::hw::inpout::loaded() {
+                    Some(Ok(d)) => format!("inpoutx64: loaded from {}", d.path().display()),
+                    Some(Err(e)) => format!("inpoutx64: {e}"),
+                    None => "inpoutx64: not loaded".to_owned(),
+                };
+                ui.label(RichText::new(pawnio).color(p.muted));
+                ui.label(RichText::new(inpout).color(p.muted));
+                ui.label(
+                    RichText::new(format!("Administrator: {}", if self.sys.elevated { "yes" } else { "no" }))
+                        .color(p.muted),
+                );
+                ui.separator();
+            }
             let st = self.engine.lock();
             egui::Grid::new("sources-grid").striped(true).num_columns(3).spacing(vec2(12.0, 4.0)).show(ui, |ui| {
                 ui.label(RichText::new("Source").font(theme::bold(body())));
@@ -903,13 +994,14 @@ impl MonitorApp {
         let before = self.settings.clone();
         let (sensors, sensor_names) = {
             let st = self.engine.lock();
+            let numbered = rows::number_gpus(&st);
             let names = self
                 .settings
                 .tray_sensors
                 .iter()
                 .filter_map(|key| {
                     let r = st.sensor(key)?;
-                    let device = st.device(&r.info.device).map(short_device).unwrap_or_default();
+                    let device = st.device(&r.info.device).map(|d| short_device(d, numbered)).unwrap_or_default();
                     Some((key.clone(), format!("{device} · {}", r.info.label)))
                 })
                 .collect::<Vec<_>>();
@@ -969,15 +1061,14 @@ impl MonitorApp {
 }
 
 /// A device as a graph legend names it: short enough that several series fit on one line.
-fn short_device(d: &roch_sensors::model::DeviceInfo) -> String {
+fn short_device(d: &roch_sensors::model::DeviceInfo, numbered_gpus: bool) -> String {
     match d.kind {
         DeviceKind::Cpu => "CPU".into(),
         DeviceKind::Board => "Board".into(),
         DeviceKind::System => "System".into(),
         DeviceKind::Memory => "Memory".into(),
         DeviceKind::Errors => "WHEA".into(),
-        DeviceKind::Gpu if d.order == 0 => "GPU".into(),
-        DeviceKind::Gpu => format!("GPU {}", d.order),
+        DeviceKind::Gpu => rows::device_tag(d, numbered_gpus),
         // "DIMM A2: G Skill Intl F4-..." -> "DIMM A2".
         DeviceKind::Dimm => d.name.split(':').next().unwrap_or(&d.name).to_owned(),
         DeviceKind::Drive | DeviceKind::Network => {
@@ -1016,7 +1107,7 @@ fn draw_row(
 ) {
     let width = ui.available_width();
     match row {
-        Row::Device { id, kind, name, detail, collapsed, sensors } => {
+        Row::Device { id, tag, name, detail, collapsed, sensors, .. } => {
             let (r, resp) = ui.allocate_exact_size(vec2(width, theme::row()), Sense::click());
             #[cfg(test)]
             tests::record(id, r);
@@ -1027,8 +1118,7 @@ fn draw_row(
             let chevron = if *collapsed { "▸" } else { "▾" };
             painter.text(pos2(x, r.center().y), Align2::LEFT_CENTER, chevron, theme::bold(body()), p.text);
             x += 16.0;
-            let tag =
-                painter.text(pos2(x, r.center().y), Align2::LEFT_CENTER, kind.tag(), theme::bold(body()), p.accent);
+            let tag = painter.text(pos2(x, r.center().y), Align2::LEFT_CENTER, tag, theme::bold(body()), p.accent);
             x = tag.right() + 10.0;
             let n = painter.text(pos2(x, r.center().y), Align2::LEFT_CENTER, name, theme::bold(body()), p.text);
             x = n.right() + 12.0;
@@ -1205,15 +1295,17 @@ fn draw_row(
                     actions.push(Action::Copy(line.clone()));
                     ui.close();
                 }
-                let tray_label = if in_tray.contains(&key) { "Remove from tray" } else { "Show in tray" };
-                let full = in_tray.len() >= super::settings::MAX_TRAY_SENSORS && !in_tray.contains(&key);
-                if ui
-                    .add_enabled(!full, egui::Button::new(tray_label))
-                    .on_disabled_hover_text("Six sensors are in the tray already")
-                    .clicked()
-                {
-                    actions.push(Action::Tray(key.clone()));
-                    ui.close();
+                if cfg!(windows) {
+                    let tray_label = if in_tray.contains(&key) { "Remove from tray" } else { "Show in tray" };
+                    let full = in_tray.len() >= super::settings::MAX_TRAY_SENSORS && !in_tray.contains(&key);
+                    if ui
+                        .add_enabled(!full, egui::Button::new(tray_label))
+                        .on_disabled_hover_text("Six sensors are in the tray already")
+                        .clicked()
+                    {
+                        actions.push(Action::Tray(key.clone()));
+                        ui.close();
+                    }
                 }
                 ui.separator();
                 if already_hidden {
@@ -1418,10 +1510,15 @@ pub(crate) mod tests {
         let mut drawn = Vec::new();
         out.shapes.iter().for_each(|s| texts(&s.shape, &mut drawn));
         let all = drawn.join("\n");
-        // Whatever this machine has: PawnIO's state, and inpoutx64's without loading it.
-        assert!(all.lines().any(|l| l.starts_with("PawnIO: ")), "{all}");
-        assert!(all.lines().any(|l| l.starts_with("inpoutx64: ")), "{all}");
-        assert!(roch_sensors::hw::inpout::loaded().is_none(), "drawing the window loaded inpoutx64");
+        #[cfg(windows)]
+        {
+            // Show both Windows drivers' state without loading inpoutx64.
+            assert!(all.lines().any(|l| l.starts_with("PawnIO: ")), "{all}");
+            assert!(all.lines().any(|l| l.starts_with("inpoutx64: ")), "{all}");
+            assert!(roch_sensors::hw::inpout::loaded().is_none(), "drawing the window loaded inpoutx64");
+        }
+        #[cfg(not(windows))]
+        assert!(all.lines().any(|l| l == "Status"), "{all}");
     }
 
     #[test]
@@ -1604,6 +1701,7 @@ mod settings_tests {
                 &st,
                 &rows::View {
                     search: "",
+                    only: None,
                     hidden: &[],
                     show_hidden: false,
                     collapsed: &[],

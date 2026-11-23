@@ -5,11 +5,13 @@
 //! Events arrive on whatever thread the shell uses; they go into a channel and the UI thread is
 //! woken to handle them in `App::logic`, which keeps running while the window is hidden.
 
+#[cfg(windows)]
 use std::sync::mpsc::Receiver;
 
 use eframe::egui::{Color32, Context};
 
 /// What the tray asked for.
+#[cfg(windows)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrayCommand {
     Show,
@@ -27,8 +29,10 @@ pub struct TrayValue {
 }
 
 /// The shell truncates a notification tooltip at 127 characters.
+#[cfg(any(windows, test))]
 pub const TOOLTIP_MAX: usize = 127;
 
+#[cfg(any(windows, test))]
 pub fn clip_tooltip(text: &str) -> String {
     if text.chars().count() <= TOOLTIP_MAX {
         text.to_owned()
@@ -59,6 +63,7 @@ pub fn icon_digits(value: f64, unit: &str) -> String {
 }
 
 /// A 4 x 7 pixel font: one row per u8, the low four bits from the left.
+#[cfg(any(windows, test))]
 fn glyph(c: char) -> Option<(u32, [u8; 7])> {
     Some(match c {
         '0' => (4, [0b0110, 0b1001, 0b1011, 0b1101, 0b1001, 0b1001, 0b0110]),
@@ -80,6 +85,7 @@ fn glyph(c: char) -> Option<(u32, [u8; 7])> {
 
 /// Draw `text` centred in a `size` x `size` RGBA square: `fg` digits on a `bg` ground, the font
 /// scaled up by whole pixels for a larger icon so the digits stay crisp.
+#[cfg(any(windows, test))]
 pub fn render_digits(text: &str, size: u32, fg: Color32, bg: Color32) -> Vec<u8> {
     let size = size.max(16);
     let glyphs: Vec<(u32, [u8; 7])> = text.chars().filter_map(glyph).collect();
@@ -284,9 +290,7 @@ mod imp {
 pub use imp::Tray;
 
 #[cfg(not(windows))]
-pub struct Tray {
-    pub commands: Receiver<TrayCommand>,
-}
+pub struct Tray;
 
 #[cfg(not(windows))]
 impl Tray {

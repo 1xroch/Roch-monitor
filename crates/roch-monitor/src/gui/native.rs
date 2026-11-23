@@ -4,6 +4,18 @@
 
 use std::path::Path;
 
+pub fn drag_title(ui: &mut eframe::egui::Ui, title: eframe::egui::RichText) {
+    use eframe::egui::{Label, PointerButton, Sense, ViewportCommand};
+    let label = Label::new(title);
+    if cfg!(target_os = "linux") {
+        if ui.add(label.sense(Sense::drag())).drag_started_by(PointerButton::Primary) {
+            ui.ctx().send_viewport_cmd(ViewportCommand::StartDrag);
+        }
+    } else {
+        ui.add(label);
+    }
+}
+
 /// This thread's top-level windows whose title starts with `prefix`.
 #[cfg(windows)]
 fn own_windows(prefix: &str) -> Vec<windows_sys::Win32::Foundation::HWND> {
@@ -102,7 +114,14 @@ pub fn apply_opacity(_opacity: f32) -> bool {
 }
 
 /// Open Explorer with the file selected (or the folder, for a folder).
+#[cfg(windows)]
 pub fn reveal(path: &Path) {
     let arg = if path.is_dir() { path.display().to_string() } else { format!("/select,{}", path.display()) };
     let _ = std::process::Command::new("explorer.exe").arg(arg).spawn();
+}
+
+#[cfg(not(windows))]
+pub fn reveal(path: &Path) {
+    let folder = if path.is_dir() { path } else { path.parent().unwrap_or(Path::new(".")) };
+    let _ = std::process::Command::new("xdg-open").arg(folder).spawn();
 }

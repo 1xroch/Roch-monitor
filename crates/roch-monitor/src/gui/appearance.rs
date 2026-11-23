@@ -24,7 +24,13 @@ impl ThemeMode {
         match self {
             ThemeMode::Light => "Light",
             ThemeMode::Dark => "Dark",
-            ThemeMode::System => "Follow Windows",
+            ThemeMode::System => {
+                if cfg!(windows) {
+                    "Follow Windows"
+                } else {
+                    "Follow system"
+                }
+            }
         }
     }
 
@@ -561,7 +567,7 @@ mod tests {
         assert_eq!(a.row_spacing, 3.0);
         assert_eq!(a.dark.value, Color32::from_rgb(0, 255, 0));
         assert_eq!(a.dark.text, Colors::DEFAULT_DARK.text);
-        assert_eq!(a.font_family, "Consolas");
+        assert_eq!(a.font_family, super::super::fonts::DEFAULT_FAMILY);
     }
 
     #[test]

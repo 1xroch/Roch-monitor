@@ -5,6 +5,7 @@
 use crate::hw::cpuid::{CpuId, Vendor};
 use crate::hw::smbios::{MemoryDevice, Smbios, short_maker};
 use crate::hw::topology::Topology;
+use crate::model::{DeviceInfo, DeviceKind};
 
 #[derive(Debug, Clone, Default)]
 pub struct SystemInfo {
@@ -14,6 +15,8 @@ pub struct SystemInfo {
     pub os: String,
     pub computer: String,
     pub elevated: bool,
+    #[cfg(target_os = "linux")]
+    pub(crate) physical_memory_mb: f64,
 }
 
 impl SystemInfo {
@@ -23,8 +26,10 @@ impl SystemInfo {
             topology: Topology::read(),
             smbios: Smbios::read().unwrap_or_default(),
             os: os_name(),
-            computer: std::env::var("COMPUTERNAME").unwrap_or_default(),
+            computer: computer_name(),
             elevated: crate::hw::is_elevated(),
+            #[cfg(target_os = "linux")]
+            physical_memory_mb: crate::sources::system_usage::memory().map_or(0.0, |m| m.total_mb),
         }
     }
 
@@ -62,6 +67,10 @@ impl SystemInfo {
     pub fn memory_summary(&self) -> String {
         let total_mb: u64 = self.smbios.memory.iter().map(|m| m.size_mb).sum();
         if total_mb == 0 {
+            #[cfg(target_os = "linux")]
+            if self.physical_memory_mb > 0.0 {
+                return format!("{:.1} GB RAM", self.physical_memory_mb / 1024.0);
+            }
             return String::new();
         }
         let generation = self.memory_generation().unwrap_or("RAM");
@@ -82,6 +91,22 @@ impl SystemInfo {
         let wanted = slot_name(slot);
         self.smbios.memory.iter().find(|m| slot_from_locator(&m.locator, &m.bank).as_deref() == Some(wanted.as_str()))
     }
+}
+
+/// The CPU heading shared by sources that contribute sensors to it.
+pub fn cpu_device(sys: &SystemInfo) -> DeviceInfo {
+    let cores = sys.topology.cores;
+    let threads = sys.topology.logical.len();
+    let detail = if sys.topology.hybrid {
+        let p = sys.topology.logical.iter().filter(|l| l.performance && l.thread == 0).count();
+        let e = cores.saturating_sub(p);
+        format!("{p}P + {e}E cores, {threads} threads")
+    } else if cores > 0 {
+        format!("{cores} cores, {threads} threads")
+    } else {
+        String::new()
+    };
+    DeviceInfo::new("cpu", DeviceKind::Cpu, sys.cpu_name()).detail(detail)
 }
 
 /// "A1", "A2", "B1", "B2", ... for slot 0, 1, 2, 3: two slots per channel, which is how Intel
@@ -185,9 +210,32 @@ fn os_name() -> String {
     s
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
+fn os_name() -> String {
+    std::fs::read_to_string("/etc/os-release")
+        .or_else(|_| std::fs::read_to_string("/usr/lib/os-release"))
+        .ok()
+        .and_then(|release| {
+            release.lines().find_map(|line| {
+                line.strip_prefix("PRETTY_NAME=").map(|name| name.trim_matches(['\"', '\'']).to_owned())
+            })
+        })
+        .unwrap_or_else(|| "Linux".into())
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
 fn os_name() -> String {
     std::env::consts::OS.into()
+}
+
+#[cfg(target_os = "linux")]
+fn computer_name() -> String {
+    std::fs::read_to_string("/proc/sys/kernel/hostname").unwrap_or_default().trim().to_owned()
+}
+
+#[cfg(not(target_os = "linux"))]
+fn computer_name() -> String {
+    std::env::var("COMPUTERNAME").unwrap_or_default()
 }
 
 #[cfg(test)]

@@ -22,7 +22,10 @@ const VENDORS: [(&str, Maker); 3] = [
     ("Intel", || Box::new(roch_intel::IntelBackend::new())),
 ];
 
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
+const VENDORS: [(&str, Maker); 1] = [("AMD", || Box::new(roch_amdgpu::AmdgpuBackend::new()))];
+
+#[cfg(not(any(windows, target_os = "linux")))]
 const VENDORS: [(&str, Maker); 0] = [];
 
 struct Card {
@@ -55,11 +58,18 @@ impl Gpus {
                 (b, r)
             }));
             match outcome {
-                Ok((mut backend, Ok(()))) if !backend.devices().is_empty() => {
+                Ok((backend, Ok(()))) if !backend.devices().is_empty() => {
+                    #[cfg(not(target_os = "linux"))]
+                    let mut backend = backend;
                     let slot = backends.len();
                     let devices = backend.devices().to_vec();
                     for d in devices {
+                        #[cfg(not(target_os = "linux"))]
                         let caps = backend.capabilities(d.index).unwrap_or_default();
+                        // AMDGPU telemetry expresses power as an offset. Looking up tuning
+                        // capabilities would also capture stock clocks for a later tuning run.
+                        #[cfg(target_os = "linux")]
+                        let caps = GpuCapabilities { power_limit_is_offset: true, ..GpuCapabilities::default() };
                         let number = cards.len();
                         let mut detail = Vec::new();
                         if !d.driver_version.is_empty() && d.driver_version != "unknown" {
@@ -140,7 +150,11 @@ fn put_card(out: &mut Batch, card: &mut Card, t: &GpuTelemetry, extra: &std::col
     }
 
     if t.voltage_mv.is_finite() && t.voltage_mv > 0.0 {
-        out.put(&s("volt", Group::Voltages, "GPU Core (VID)", "mV", 0), t.voltage_mv);
+        #[cfg(target_os = "linux")]
+        let voltage = s("volt", Group::Voltages, "GPU Core Voltage", "mV", 0).source("amdgpu hwmon · vddgfx");
+        #[cfg(not(target_os = "linux"))]
+        let voltage = s("volt", Group::Voltages, "GPU Core (VID)", "mV", 0);
+        out.put(&voltage, t.voltage_mv);
     }
     if t.nvvdd_mv.is_finite() {
         out.put(&s("nvvdd", Group::Voltages, "NVVDD (measured)", "mV", 1), t.nvvdd_mv);
@@ -200,6 +214,7 @@ fn put_card(out: &mut Batch, card: &mut Card, t: &GpuTelemetry, extra: &std::col
         out.put(&s("power/tdp", Group::Power, "Total, % of TDP", "%", 1), t.power_percent);
     }
 
+    #[cfg(windows)]
     let n = t.rail_amps.len();
     for (i, a) in t.rail_amps.iter().enumerate() {
         #[cfg(windows)]
@@ -230,7 +245,11 @@ fn put_card(out: &mut Batch, card: &mut Card, t: &GpuTelemetry, extra: &std::col
 
     for x in &t.supplemental_sensors {
         let key = format!("x/{}", x.key.replace([':', ' '], "-"));
-        out.put(&s(&key, Group::for_unit(&x.unit), &x.name, &x.unit, decimals_for(&x.unit)), x.value);
+        let group = match x.key.as_str() {
+            "amdgpu:vram_usage" | "amdgpu:gtt_usage" => Group::Memory,
+            _ => Group::for_unit(&x.unit),
+        };
+        out.put(&s(&key, group, &x.name, &x.unit, decimals_for(&x.unit)), x.value);
     }
     let _ = card.nvidia;
 }

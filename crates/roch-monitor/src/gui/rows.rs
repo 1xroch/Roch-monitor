@@ -5,24 +5,39 @@
 //! Every row is the same height, so the scroll area only lays out what is on screen.
 
 use roch_sensors::engine::State;
-use roch_sensors::model::DeviceKind;
+use roch_sensors::model::{DeviceInfo, DeviceKind, Group};
 
 use crate::report::device_rows;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Row {
-    Device { id: String, kind: DeviceKind, name: String, detail: String, collapsed: bool, sensors: usize },
+    Device { id: String, kind: DeviceKind, tag: String, name: String, detail: String, collapsed: bool, sensors: usize },
     Group { title: &'static str },
     Sensor { index: usize, depth: u8, children: usize, expanded: bool, hidden: bool },
 }
 
 pub struct View<'a> {
     pub search: &'a str,
+    /// Show only this group's readings, as the Voltages chip asks, alongside any search.
+    pub only: Option<Group>,
     pub hidden: &'a [String],
     pub show_hidden: bool,
     pub collapsed: &'a [String],
     pub expanded: &'a [String],
     pub group_headings: bool,
+}
+
+/// Whether GPU headings carry a number: only when there is more than one GPU to tell apart.
+pub fn number_gpus(state: &State) -> bool {
+    state.ordered_devices().iter().filter(|d| d.kind == DeviceKind::Gpu).count() > 1
+}
+
+/// The tag ahead of a device's name: "GPU 1" and "GPU 2" when two cards share a model name.
+pub fn device_tag(d: &DeviceInfo, numbered: bool) -> String {
+    match d.kind {
+        DeviceKind::Gpu if numbered => format!("{} {}", d.kind.tag(), d.order + 1),
+        kind => kind.tag().to_owned(),
+    }
 }
 
 fn matches(needle: &str, hay: &str) -> bool {
@@ -32,6 +47,7 @@ fn matches(needle: &str, hay: &str) -> bool {
 pub fn build(state: &State, v: &View) -> Vec<Row> {
     let needle = v.search.trim().to_lowercase();
     let searching = !needle.is_empty();
+    let numbered = number_gpus(state);
     let mut rows = Vec::new();
     for d in state.ordered_devices() {
         let device_hit =
@@ -40,6 +56,9 @@ pub fn build(state: &State, v: &View) -> Vec<Row> {
         let mut body = Vec::new();
         let mut count = 0usize;
         for (group, list) in groups {
+            if v.only.is_some_and(|only| only != group) {
+                continue;
+            }
             let group_hit = searching && matches(&needle, group.title());
             let mut entries = Vec::new();
             for &i in &list {
@@ -99,10 +118,12 @@ pub fn build(state: &State, v: &View) -> Vec<Row> {
         if body.is_empty() {
             continue;
         }
-        let collapsed = !searching && v.collapsed.contains(&d.id);
+        // A search or the Voltages chip opens every device it finds something in.
+        let collapsed = !searching && v.only.is_none() && v.collapsed.contains(&d.id);
         rows.push(Row::Device {
             id: d.id.clone(),
             kind: d.kind,
+            tag: device_tag(d, numbered),
             name: d.name.clone(),
             detail: d.detail.clone(),
             collapsed,
@@ -158,7 +179,7 @@ mod tests {
     }
 
     fn view<'a>(search: &'a str, collapsed: &'a [String], expanded: &'a [String], hidden: &'a [String]) -> View<'a> {
-        View { search, hidden, show_hidden: false, collapsed, expanded, group_headings: true }
+        View { search, only: None, hidden, show_hidden: false, collapsed, expanded, group_headings: true }
     }
 
     fn sensor_labels(state: &State, rows: &[Row]) -> Vec<String> {

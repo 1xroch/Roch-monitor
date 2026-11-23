@@ -12,6 +12,10 @@ serde.workspace = true
 serde_json.workspace = true
 chrono.workspace = true
 
+[target.'cfg(target_os = "linux")'.dependencies]
+libc.workspace = true
+roch-amdgpu.workspace = true
+
 [target.'cfg(windows)'.dependencies]
 roch-nvidia.workspace = true
 roch-amd.workspace = true

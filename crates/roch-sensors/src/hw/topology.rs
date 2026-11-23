@@ -113,7 +113,34 @@ impl Topology {
         }
     }
 
-    #[cfg(not(windows))]
+    #[cfg(target_os = "linux")]
+    pub fn read() -> Topology {
+        use std::collections::BTreeMap;
+        use std::fs;
+
+        let mut cores: BTreeMap<(u32, u32), BTreeMap<u16, u64>> = BTreeMap::new();
+        let entries = fs::read_dir("/sys/devices/system/cpu").into_iter().flatten().flatten();
+        for entry in entries {
+            let name = entry.file_name();
+            let Some(cpu) = name.to_str().and_then(|n| n.strip_prefix("cpu")).and_then(|n| n.parse::<u32>().ok())
+            else {
+                continue;
+            };
+            let root = entry.path();
+            if fs::read_to_string(root.join("online")).is_ok_and(|v| v.trim() == "0") {
+                continue;
+            }
+            let read_id = |file| fs::read_to_string(root.join("topology").join(file)).ok()?.trim().parse::<u32>().ok();
+            let package = read_id("physical_package_id").unwrap_or(0);
+            let core = read_id("core_id").unwrap_or(cpu);
+            let Ok(group) = u16::try_from(cpu / 64) else { continue };
+            *cores.entry((package, core)).or_default().entry(group).or_default() |= 1 << (cpu % 64);
+        }
+        let cores: Vec<_> = cores.into_values().map(|groups| (0, groups.into_iter().collect())).collect();
+        Topology::from_cores(&cores)
+    }
+
+    #[cfg(not(any(windows, target_os = "linux")))]
     pub fn read() -> Topology {
         Topology::default()
     }

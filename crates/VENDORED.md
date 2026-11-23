@@ -13,9 +13,13 @@ in `roch-amd` and both the same edits as in Roch GPU:
 
 Copying a Roch GPU checkout that includes these commits leaves nothing of them to carry.
 
+`roch-amdgpu` comes from Roch GPU commit `caacf2075bf0ef2a28cb307b1382be1e3bb23453`. Its identity
+output uses the older `GpuDevice` and `GpuGraphicsInfo` fields present in this workspace. Monitor
+initializes this backend and reads telemetry directly, so it does not capture stock tuning settings.
+
 They are copied rather than referenced so this repository builds on its own. Roch Monitor calls only
 their read paths: `GpuBackend::initialize`, `devices`, `capabilities`, `read_telemetry` and
 `measure_extra_clocks`. None of the setters is reachable from `roch-sensors`.
 
-To update them, copy the four directories from a newer Roch GPU checkout over these, then run
-`cargo test` and `RochMonitor.exe --dump` on a machine with the card.
+To update them, copy the corresponding directories from a newer Roch GPU checkout, then run
+`cargo test` and `RochMonitor --dump` on the operating system with the card.

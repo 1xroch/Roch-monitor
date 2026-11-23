@@ -4,6 +4,7 @@ members = [
     "crates/roch-core",
     "crates/roch-nvidia",
     "crates/roch-amd",
+    "crates/roch-amdgpu",
     "crates/roch-intel",
     "crates/roch-sensors",
     "crates/roch-monitor",
@@ -17,11 +18,12 @@ authors = ["Roch Studio"]
 repository = "https://github.com/RochStudio/Roch-monitor"
 
 [workspace.dependencies]
-# The GPU crates are vendored unchanged from Roch GPU (see crates/VENDORED.md); they keep their own
-# version numbers through `version.workspace`, which is why that key resolves here too.
+# The GPU crates are vendored from Roch GPU (see crates/VENDORED.md). Their `version.workspace`
+# resolves against this workspace.
 roch-core = { path = "crates/roch-core" }
 roch-nvidia = { path = "crates/roch-nvidia" }
 roch-amd = { path = "crates/roch-amd" }
+roch-amdgpu = { path = "crates/roch-amdgpu" }
 roch-intel = { path = "crates/roch-intel" }
 roch-sensors = { path = "crates/roch-sensors" }
 serde = { version = "1", features = ["derive"] }

@@ -162,26 +162,40 @@ pub fn value_font(size: f32) -> FontId {
     if look().bold_values { FontId::new(size, FontFamily::Name("bold".into())) } else { regular(size) }
 }
 
-/// The Settings window always draws in Consolas, whatever the table uses, so a font that cannot
-/// show the controls never makes the controls unreadable.
+/// The Settings window uses the platform's default face so it stays readable as fonts change.
 pub fn settings_font(size: f32, bold: bool) -> FontId {
     FontId::new(size, FontFamily::Name(if bold { "settings-bold" } else { "settings" }.into()))
 }
 
-/// Load the chosen family (its regular face, and its bold face for headings when it has one), with
-/// Consolas, Segoe UI Symbol (for ▸ ▾ ● ·) and egui's own fonts behind it. A file that cannot be
-/// read is skipped; the window always has something to draw with.
+/// Load the chosen family and fall back to platform defaults, symbols, and egui's bundled fonts.
 pub fn install_fonts(ctx: &Context, family: &str) {
     let mut fonts = FontDefinitions::default();
-    let dir = std::env::var_os("WINDIR").map(std::path::PathBuf::from).unwrap_or_else(|| "C:\\Windows".into());
     let mut load = |key: &str, path: std::path::PathBuf| -> Option<String> {
         let bytes = std::fs::read(path).ok()?;
         fonts.font_data.insert(key.to_owned(), std::sync::Arc::new(FontData::from_owned(bytes)));
         Some(key.to_owned())
     };
-    let consolas = load("consolas", dir.join("Fonts").join("consola.ttf"));
-    let consolas_bold = load("consolas-bold", dir.join("Fonts").join("consolab.ttf"));
-    let symbols = load("segoe-symbol", dir.join("Fonts").join("seguisym.ttf"));
+    #[cfg(windows)]
+    let (platform, platform_bold, symbols) = {
+        let dir = std::env::var_os("WINDIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| "C:\\Windows".into())
+            .join("Fonts");
+        (
+            load("platform", dir.join("consola.ttf")),
+            load("platform-bold", dir.join("consolab.ttf")),
+            load("symbols", dir.join("seguisym.ttf")),
+        )
+    };
+    #[cfg(not(windows))]
+    let (platform, platform_bold, symbols) = {
+        let default = fonts::find_family(fonts::DEFAULT_FAMILY);
+        (
+            default.and_then(|f| load("platform", f.regular.clone())),
+            default.and_then(|f| load("platform-bold", f.bold.clone()?)),
+            fonts::find_family("Noto Sans Symbols 2").and_then(|f| load("symbols", f.regular.clone())),
+        )
+    };
     let (chosen, chosen_bold) = if family.eq_ignore_ascii_case(fonts::DEFAULT_FAMILY) {
         (None, None)
     } else {
@@ -194,19 +208,18 @@ pub fn install_fonts(ctx: &Context, family: &str) {
             None => (None, None),
         }
     };
-    let defaults: Vec<String> =
-        FontDefinitions::default().families.get(&FontFamily::Proportional).cloned().unwrap_or_default();
+    let fallback = if cfg!(windows) { FontFamily::Proportional } else { FontFamily::Monospace };
+    let defaults = fonts.families.get(&fallback).cloned().unwrap_or_default();
     let chain = |first: Vec<Option<String>>| -> Vec<String> {
         first.into_iter().flatten().chain(symbols.clone()).chain(defaults.iter().cloned()).collect()
     };
-    let regular = chain(vec![chosen.clone(), consolas.clone()]);
-    // A chosen family without a bold face uses its regular one, rather than Consolas Bold beside it.
-    let bold = chain(vec![chosen_bold, chosen.clone(), consolas_bold.clone(), consolas.clone()]);
+    let regular = chain(vec![chosen.clone(), platform.clone()]);
+    let bold = chain(vec![chosen_bold, chosen, platform_bold.clone(), platform.clone()]);
     fonts.families.insert(FontFamily::Proportional, regular.clone());
     fonts.families.insert(FontFamily::Monospace, regular);
     fonts.families.insert(FontFamily::Name("bold".into()), bold);
-    fonts.families.insert(FontFamily::Name("settings".into()), chain(vec![consolas.clone()]));
-    fonts.families.insert(FontFamily::Name("settings-bold".into()), chain(vec![consolas_bold, consolas]));
+    fonts.families.insert(FontFamily::Name("settings".into()), chain(vec![platform.clone()]));
+    fonts.families.insert(FontFamily::Name("settings-bold".into()), chain(vec![platform_bold, platform]));
     ctx.set_fonts(fonts);
 }
 

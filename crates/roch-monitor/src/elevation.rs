@@ -32,11 +32,6 @@ pub fn relaunch_elevated(args: &[String]) -> bool {
     }
 }
 
-#[cfg(not(windows))]
-pub fn relaunch_elevated(_args: &[String]) -> bool {
-    false
-}
-
 #[cfg(test)]
 mod tests {
     #[test]

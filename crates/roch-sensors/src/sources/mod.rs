@@ -1,22 +1,39 @@
 //! Every sensor source, and the list the engine starts from.
 
+#[cfg(not(target_os = "linux"))]
 pub mod amd_smu;
+#[cfg(not(target_os = "linux"))]
 pub mod asus_ec;
+#[cfg(not(target_os = "linux"))]
 pub mod cpu_load;
+#[cfg(not(target_os = "linux"))]
 pub mod dimm;
+#[cfg(not(target_os = "linux"))]
 pub mod drives;
 pub mod gpu;
+#[cfg(not(target_os = "linux"))]
 pub mod intel_mchbar;
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(not(target_os = "linux"))]
 pub mod msr;
+#[cfg(not(target_os = "linux"))]
 pub mod network;
+#[cfg(not(target_os = "linux"))]
 pub mod smbus;
+#[cfg(not(target_os = "linux"))]
 pub mod superio;
 pub mod system_usage;
+#[cfg(not(target_os = "linux"))]
 pub mod whea;
 
+#[cfg(not(target_os = "linux"))]
 use std::sync::Arc;
 
-use crate::engine::{Batch, Factory, Source};
+use crate::engine::Source;
+#[cfg(not(target_os = "linux"))]
+use crate::engine::{Batch, Factory};
+#[cfg(not(target_os = "linux"))]
 use crate::system::SystemInfo;
 
 /// Which optional sources to start.
@@ -25,6 +42,8 @@ pub struct Options {
     /// The driver-based transports: the per-core MSRs, the board, DIMM, MCHBAR and EC sensors,
     /// and the AMD SMU's PM table.
     pub hardware: bool,
+    #[cfg(target_os = "linux")]
+    pub board_voltages: bool,
     /// Which kernel driver those go through.
     pub driver: crate::hw::Driver,
     pub gpu: bool,
@@ -37,7 +56,16 @@ pub struct Options {
 
 impl Default for Options {
     fn default() -> Self {
-        Self { hardware: true, driver: crate::hw::Driver::Auto, gpu: true, drives: true, network: true, pmic_adc: true }
+        Self {
+            hardware: true,
+            #[cfg(target_os = "linux")]
+            board_voltages: false,
+            driver: crate::hw::Driver::Auto,
+            gpu: true,
+            drives: true,
+            network: true,
+            pmic_adc: true,
+        }
     }
 }
 
@@ -46,6 +74,7 @@ fn boxed<S: Source + 'static>(s: Option<S>) -> Option<Box<dyn Source>> {
 }
 
 /// The sources for this machine, each as a factory the engine runs on the source's own thread.
+#[cfg(not(target_os = "linux"))]
 pub fn factories(sys: &SystemInfo, options: Options) -> Vec<(String, Factory)> {
     let sys = Arc::new(sys.clone());
     let mut list: Vec<(String, Factory)> = Vec::new();
@@ -99,3 +128,6 @@ pub fn factories(sys: &SystemInfo, options: Options) -> Vec<(String, Factory)> {
     add("WHEA", Box::new(|_: &mut Batch| boxed(Some(whea::Whea::new()))));
     list
 }
+
+#[cfg(target_os = "linux")]
+pub use linux::{board_voltages, factories};

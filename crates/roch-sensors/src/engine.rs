@@ -271,29 +271,38 @@ impl Engine {
             repaint: Mutex::new(None),
             epoch: Instant::now(),
         });
+        let mut engine = Engine { shared, threads: Vec::new() };
+        for (name, factory) in factories {
+            engine.add_source(name, factory);
+        }
+        engine
+    }
+
+    pub fn add_source(&mut self, name: String, factory: Factory) {
+        let index = {
+            let mut state = self.shared.lock();
+            let index = state.sources.len();
+            state.sources.push(SourceStatus {
+                name: name.clone(),
+                status: "Starting…".into(),
+                last_poll: Duration::ZERO,
+                polls: 0,
+                failed: false,
+            });
+            index
+        };
+        let shared = self.shared.clone();
+        match std::thread::Builder::new()
+            .name(format!("Roch Monitor: {name}"))
+            .spawn(move || run_source(index, factory, &shared))
         {
-            let mut st = shared.lock();
-            for (name, _) in &factories {
-                st.sources.push(SourceStatus {
-                    name: name.clone(),
-                    status: "Starting…".into(),
-                    last_poll: Duration::ZERO,
-                    polls: 0,
-                    failed: false,
-                });
+            Ok(handle) => self.threads.push(handle),
+            Err(error) => {
+                let mut state = self.shared.lock();
+                state.sources[index].status = format!("Could not start: {error}");
+                state.sources[index].failed = true;
             }
         }
-        let mut threads = Vec::new();
-        for (index, (name, factory)) in factories.into_iter().enumerate() {
-            let shared = shared.clone();
-            let spawned = std::thread::Builder::new()
-                .name(format!("Roch Monitor: {name}"))
-                .spawn(move || run_source(index, factory, &shared));
-            if let Ok(handle) = spawned {
-                threads.push(handle);
-            }
-        }
-        Engine { shared, threads }
     }
 
     pub fn shared(&self) -> &Arc<Shared> {

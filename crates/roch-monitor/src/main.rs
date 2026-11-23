@@ -6,6 +6,7 @@
 
 mod cli;
 mod console;
+#[cfg(any(windows, test))]
 mod elevation;
 mod gui;
 mod logger;
@@ -22,14 +23,21 @@ fn main() {
 }
 
 fn entry(args: &[String]) -> i32 {
+    #[cfg(target_os = "linux")]
+    if args == [roch_sensors::sources::board_voltages::HELPER_ARG] {
+        return roch_sensors::sources::board_voltages::serve();
+    }
     if cli::wants_command_line(args) {
         let _console = console::attach();
         return cli::run(args);
     }
-    let elevated = roch_sensors::hw::is_elevated();
-    let declined = args.iter().any(|a| a == "--no-elevate" || a == "--elevated");
-    if !elevated && !declined && elevation::relaunch_elevated(args) {
-        return 0;
+    #[cfg(windows)]
+    {
+        let elevated = roch_sensors::hw::is_elevated();
+        let declined = args.iter().any(|a| a == "--no-elevate" || a == "--elevated");
+        if !elevated && !declined && elevation::relaunch_elevated(args) {
+            return 0;
+        }
     }
     gui::run(args)
 }

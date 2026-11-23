@@ -10,6 +10,7 @@ use roch_sensors::system::SystemInfo;
 
 use crate::{logger, report};
 
+#[cfg(windows)]
 pub const HELP: &str = "\
 Roch Monitor — live hardware sensors with current, minimum, maximum and average.
 
@@ -41,6 +42,29 @@ memory-controller sensors use PawnIO too where it is installed, and the inpoutx6
 administrator rights; everything else works without either.
 ";
 
+#[cfg(not(windows))]
+pub const HELP: &str = "Roch Monitor — read-only hardware monitoring
+
+  RochMonitor                        open the desktop window
+  RochMonitor --dump [options]       print a sensor report
+  RochMonitor --log FILE [options]   write a CSV log
+  RochMonitor --help | --version
+
+Options for --dump and --log:
+  --seconds N        duration (default 3 for --dump, 60 for --log)
+  --interval MS      polling interval (default 1000, minimum 250)
+  --json             print the report as JSON
+  --no-hardware      skip CPU power, CPU temperatures, board and DIMM sensors
+  --no-gpu           skip graphics sensors
+  --board-voltages   read board rails on the supported Z890 Tachyon ICE (asks for access)
+
+Window options:
+  --settings [PAGE]  open Settings at appearance, colours, text, layout, window or sensors
+  --board-voltages   request board voltage readings at startup
+
+Readings come from Linux kernel drivers via /proc and /sys.
+";
+
 pub fn wants_command_line(args: &[String]) -> bool {
     args.iter().any(|a| matches!(a.as_str(), "--dump" | "--log" | "--help" | "-h" | "--version" | "/?"))
 }
@@ -60,6 +84,8 @@ pub fn driver(args: &[String]) -> Result<Driver, String> {
 pub fn options(args: &[String]) -> Options {
     Options {
         hardware: !args.iter().any(|a| a == "--no-hardware"),
+        #[cfg(target_os = "linux")]
+        board_voltages: args.iter().any(|a| a == "--board-voltages"),
         driver: driver(args).unwrap_or_default(),
         gpu: !args.iter().any(|a| a == "--no-gpu"),
         pmic_adc: !args.iter().any(|a| a == "--no-pmic-adc"),
@@ -82,12 +108,22 @@ pub fn run(args: &[String]) -> i32 {
         value(args, "--seconds").and_then(|s| s.parse().ok()).unwrap_or(if logging.is_some() { 60 } else { 3 });
     let interval: u64 = value(args, "--interval").and_then(|s| s.parse().ok()).unwrap_or(1000);
 
-    if let Err(e) = driver(args) {
-        let _ = writeln!(std::io::stderr(), "{e}");
-        return 2;
+    match driver(args) {
+        Err(e) => {
+            let _ = writeln!(std::io::stderr(), "{e}");
+            return 2;
+        }
+        Ok(driver) if !cfg!(windows) && driver != Driver::Auto => {
+            let _ = writeln!(
+                std::io::stderr(),
+                "PawnIO and inpoutx64 are Windows drivers. Linux uses the kernel's sensor interfaces."
+            );
+            return 2;
+        }
+        Ok(_) => {}
     }
     let sys = SystemInfo::detect();
-    if !sys.elevated && options(args).hardware {
+    if cfg!(windows) && !sys.elevated && options(args).hardware {
         let _ = writeln!(
             std::io::stderr(),
             "Note: not running as administrator, so neither PawnIO nor inpoutx64 will open; per-core, board, DIMM and MCHBAR sensors will be missing."

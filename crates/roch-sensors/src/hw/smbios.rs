@@ -3,6 +3,7 @@
 //! directly, which takes microseconds instead of the second Roch Viewer measured for a WMI
 //! connection.
 
+#[cfg(not(target_os = "linux"))]
 use super::firmware;
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -55,8 +56,29 @@ impl MemoryDevice {
 }
 
 impl Smbios {
+    #[cfg(not(target_os = "linux"))]
     pub fn read() -> Option<Smbios> {
         firmware::table(firmware::PROVIDER_RSMB, 0).map(|raw| parse(&raw))
+    }
+
+    #[cfg(target_os = "linux")]
+    pub fn read() -> Option<Smbios> {
+        let dir = std::path::Path::new("/sys/class/dmi/id");
+        if !dir.is_dir() {
+            return None;
+        }
+        let read = |file| std::fs::read_to_string(dir.join(file)).unwrap_or_default().trim().to_owned();
+        Some(Smbios {
+            bios_vendor: read("bios_vendor"),
+            bios_version: read("bios_version"),
+            bios_date: read("bios_date"),
+            system_manufacturer: read("sys_vendor"),
+            system_product: read("product_name"),
+            board_manufacturer: read("board_vendor"),
+            board_product: read("board_name"),
+            board_version: read("board_version"),
+            ..Smbios::default()
+        })
     }
 
     /// "DDR4", "DDR5" or None, from what the modules themselves declare.

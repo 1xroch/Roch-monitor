@@ -13,6 +13,9 @@ NvAPIWrapper (Soroush Falahati, LGPL-3.0, conveyed under GPL-3.0 as LGPL-3.0 §2
 independently written bindings to AMD's ADL/ADLX and Intel's IGCL, which load the vendors' own
 DLLs from System32. No NVIDIA, AMD or Intel code or headers are included.
 
+`crates/roch-amdgpu` comes from Roch GPU's Linux backend and carries the same GPL-3.0-or-later
+license. The backend reads telemetry published by the kernel's AMDGPU driver.
+
 `crates/roch-sensors` is a Rust port of Roch Viewer's sensor transports, both projects being Roch
 Studio's and GPL-3.0-or-later.
 
@@ -85,7 +88,7 @@ or data file from any of them is included, and none is required to run Roch Moni
 
 ## Fonts
 
-The window uses Consolas and Segoe UI Symbol from the Windows font folder at run time; no font file
-is distributed. egui's built-in fonts are compiled in as the fallback for a machine without them;
+The window loads Consolas and Segoe UI Symbol on Windows, or Liberation Mono and Noto Sans
+Symbols 2 on Linux when installed. egui's built-in fonts are compiled in as the fallback;
 their licences (Hack: MIT and the Bitstream Vera licence; Ubuntu Light: Ubuntu Font Licence 1.0;
 Noto Emoji and emoji-icon-font: SIL OFL 1.1 and MIT) ship with the `epaint_default_fonts` crate.

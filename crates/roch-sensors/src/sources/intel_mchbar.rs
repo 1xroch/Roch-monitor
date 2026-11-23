@@ -65,20 +65,7 @@ pub fn measured_bclk() -> Option<f64> {
     (50.0..=300.0).contains(&b).then_some(b)
 }
 
-pub fn cpu_device(sys: &SystemInfo) -> DeviceInfo {
-    let cores = sys.topology.cores;
-    let threads = sys.topology.logical.len();
-    let detail = if sys.topology.hybrid {
-        let p = sys.topology.logical.iter().filter(|l| l.performance && l.thread == 0).count();
-        let e = cores.saturating_sub(p);
-        format!("{p}P + {e}E cores, {threads} threads")
-    } else if cores > 0 {
-        format!("{cores} cores, {threads} threads")
-    } else {
-        String::new()
-    };
-    DeviceInfo::new(CPU, DeviceKind::Cpu, sys.cpu_name()).detail(detail)
-}
+pub use crate::system::cpu_device;
 
 pub fn memory_device(sys: &SystemInfo) -> DeviceInfo {
     let mut parts: Vec<String> = Vec::new();

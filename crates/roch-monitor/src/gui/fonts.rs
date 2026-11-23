@@ -42,8 +42,14 @@ const MONOSPACE: &[&str] = &[
     "MS Gothic",
 ];
 
+#[cfg(windows)]
 pub const DEFAULT_FAMILY: &str = "Consolas";
+#[cfg(windows)]
 pub const DEFAULT_FONT_LABEL: &str = "Consolas (default)";
+#[cfg(not(windows))]
+pub const DEFAULT_FAMILY: &str = "Liberation Mono";
+#[cfg(not(windows))]
+pub const DEFAULT_FONT_LABEL: &str = "Liberation Mono (default)";
 
 const STYLE_WORDS: &[&str] = &[
     "Regular",
@@ -161,7 +167,29 @@ fn scan() -> Vec<Family> {
 
 #[cfg(not(windows))]
 fn scan() -> Vec<Family> {
-    Vec::new()
+    let Ok(output) =
+        std::process::Command::new("fc-list").arg("--format=%{family[0]}\t%{style[0]}\t%{file}\n").output()
+    else {
+        return Vec::new();
+    };
+    if !output.status.success() {
+        return Vec::new();
+    }
+    let entries: Vec<_> = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| {
+            let mut columns = line.splitn(3, '\t');
+            let family = columns.next()?;
+            let style = columns.next()?;
+            let path = columns.next()?;
+            match style {
+                "" | "Book" | "Regular" | "Normal" | "Roman" => Some((family.to_owned(), path.to_owned())),
+                "Bold" => Some((format!("{family} Bold"), path.to_owned())),
+                _ => None,
+            }
+        })
+        .collect();
+    families_from_entries(&entries, Path::new("/"))
 }
 
 /// Every installed family, read once: a font installed while the window is open shows on the next

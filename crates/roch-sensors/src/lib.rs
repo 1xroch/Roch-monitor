@@ -13,6 +13,7 @@ pub mod hw;
 pub mod model;
 pub mod sources;
 pub mod system;
+#[cfg(not(target_os = "linux"))]
 pub mod win;
 
 pub use engine::{Batch, Engine, Source, State};

@@ -12,6 +12,35 @@ permissions:
   contents: read
 
 jobs:
+  linux:
+    name: Build and test (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install desktop build dependencies
+        run: sudo apt-get update && sudo apt-get install -y libwayland-dev libxkbcommon-dev libgl1-mesa-dev
+
+      - name: Lint and test
+        run: |
+          cargo fmt --all --check
+          cargo clippy --workspace --all-targets --locked -- -D warnings
+          cargo test --workspace --locked
+
+      - name: Build and smoke-test without a desktop
+        run: |
+          cargo build --release --locked -p roch-monitor
+          target/release/RochMonitor --dump --seconds 2 > dump.txt
+          grep -q '^\[SYSTEM\]' dump.txt
+          grep -q '^\[CPU\]' dump.txt
+          grep -q '^Sources' dump.txt
+
   # Everything here runs without the inpoutx64 driver, a PawnIO install or a GPU: the hardware
   # transports are tested on their decoders and refusals, and the window through egui with no display.
   build-and-test:

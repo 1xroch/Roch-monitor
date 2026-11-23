@@ -3,11 +3,17 @@
 //! ECAM, and the firmware tables.
 
 pub mod cpuid;
+#[cfg(not(target_os = "linux"))]
 pub mod firmware;
+#[cfg(not(target_os = "linux"))]
 pub mod inpout;
+#[cfg(not(target_os = "linux"))]
 pub mod mutex;
+#[cfg(not(target_os = "linux"))]
 pub mod pawnio;
+#[cfg(not(target_os = "linux"))]
 pub mod pci;
+#[cfg(not(target_os = "linux"))]
 pub mod ports;
 pub mod smbios;
 pub mod topology;
@@ -47,6 +53,7 @@ impl Driver {
 
 /// Both drivers in one line, for reports: whether PawnIO opens, and whether anything has loaded
 /// inpoutx64 (asked without loading it).
+#[cfg(windows)]
 pub fn drivers_summary() -> String {
     let pawnio = match pawnio::available() {
         Ok(()) => "PawnIO open".to_owned(),
@@ -58,6 +65,11 @@ pub fn drivers_summary() -> String {
         Some(Err(e)) => format!("inpoutx64: {e}"),
     };
     format!("{pawnio}; {inpout}.")
+}
+
+#[cfg(not(windows))]
+pub fn drivers_summary() -> String {
+    "Linux kernel drivers via procfs and sysfs.".into()
 }
 
 /// True when this process holds an elevated token; the driver will not open otherwise.
@@ -86,7 +98,13 @@ pub fn is_elevated() -> bool {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
+pub fn is_elevated() -> bool {
+    // SAFETY: geteuid takes no arguments and returns the caller's effective user ID.
+    unsafe { libc::geteuid() == 0 }
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
 pub fn is_elevated() -> bool {
     false
 }

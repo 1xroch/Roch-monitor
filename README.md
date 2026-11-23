@@ -2,9 +2,9 @@
 
 [![CI](https://github.com/RochStudio/Roch-monitor/actions/workflows/ci.yml/badge.svg)](https://github.com/RochStudio/Roch-monitor/actions/workflows/ci.yml)
 
-Roch Monitor is a Windows hardware monitor in the spirit of HWiNFO's sensor window and HWMonitor:
+Roch Monitor is a hardware monitor for Windows and Linux:
 every live reading on the machine, grouped by device, each with its **current, minimum, maximum and
-average** since the last reset. It is built from the telemetry of the other two Roch tools:
+average** since the last reset. The Windows build uses telemetry from the other two Roch tools:
 
 - **Roch Viewer**'s sensor transports, ported from Python to Rust: the board's Super I/O, the PCH
   and FCH SMBus (DIMM thermal sensors, DDR5 hubs and PMICs), the Intel memory controller's MCHBAR
@@ -20,7 +20,45 @@ Like both, it is **read-only**. It changes no setting, and the only writes anywh
 that choose what the next read returns, each documented where it is made. The MSRs are only ever
 read.
 
-## What it shows
+## Linux
+
+Build the desktop app and CLI from the same source with stable Rust:
+
+```sh
+cargo build --release --locked -p roch-monitor
+./target/release/RochMonitor
+./target/release/RochMonitor --dump --json
+./target/release/RochMonitor --log out.csv --seconds 60
+```
+
+The window runs on Wayland and X11 with OpenGL. The CLI needs no desktop. Run either as your normal
+user. **Sources** shows which kernel interfaces answered on your machine. **Voltages** filters the
+table to voltage sensors across devices, and the search box still narrows that list.
+
+| Device | Linux readings |
+| --- | --- |
+| System | physical memory, swap and virtual memory commitment from `/proc/meminfo` |
+| CPU | total and per-thread load, CPU frequency where cpufreq exposes it, temperatures via hwmon, and package power where the powercap energy counter is readable |
+| Motherboard and DIMMs | temperature, fan, duty, voltage, current and power channels exported by kernel hwmon drivers, including supported DDR4 and DDR5 temperature sensors |
+| AMD GPU | temperatures, voltages, clocks, load, power, fans, VRAM and PCIe readings from the Roch GPU `amdgpu` backend |
+| Other GPUs | individual hwmon readings where the kernel driver exposes them |
+| Drives | read and write rates, disk activity, and temperatures from supported NVMe and SATA hwmon sensors |
+| Network | per-interface download and upload rates, session totals, and temperatures where the adapter exposes them |
+
+On the **Gigabyte Z890 AORUS TACHYON ICE**, **Voltages → Read board voltages** requests administrator
+authorization for a separate collector. It uses Roch Viewer’s confirmed ITE map for Vcore, VCCSA,
+CPU VNNAON, VDD2 and VCCIO. It also reads +12V, +5V, +3.3V, 3VSB, VBAT and AVCC3 through the IT8696E
+inputs and dividers used on Gigabyte's X870 TACHYON. Each supply rail stays hidden unless its reading
+lands in the ATX tolerance band. The collector shares Roch Viewer’s ISA lock and yields to a bound kernel
+hwmon driver. For a terminal with no graphical authorization agent, run
+`./target/release/RochMonitor --dump --board-voltages --seconds 30` and authenticate in the terminal.
+
+Linux kernel sensor rows use the labels and channels the driver supplies.
+Per-core VID, DDR5 PMIC ADC, and WHEA are Windows features in Roch Monitor. So are the tray and
+the Task Scheduler sign-in option. Logs and reports default to `~/Documents/Roch Monitor`, and
+settings are saved under `$XDG_CONFIG_HOME/RochMonitor` or `~/.config/RochMonitor`.
+
+## What it shows on Windows
 
 | Device | Readings | Source |
 | --- | --- | --- |
@@ -101,7 +139,7 @@ not been re-run since being ported; treat them as needing confirmation on your o
 - **Poll** sets the interval (250 ms to 10 s). Each source reads on its own thread, so a slow one
   never holds the others up; **Sources** shows what each found and how long it takes.
 
-### Tray
+### Tray on Windows
 
 Like HWiNFO, Roch Monitor can live in the notification area:
 
@@ -144,7 +182,7 @@ RochMonitor.exe --dump --driver inpoutx64  the same through inpoutx64 only (auto
 RochMonitor.exe --help
 ```
 
-## Prerequisites
+## Windows prerequisites
 
 - Windows 10 or 11, 64-bit.
 - **PawnIO** (recommended): install it from its author's site, https://pawnio.eu (the driver
