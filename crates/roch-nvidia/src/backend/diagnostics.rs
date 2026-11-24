@@ -174,6 +174,23 @@ impl NvidiaBackend {
                         two_dp(r.value_ma as f64 / 1000.0)
                     );
                 }
+                // What a write is actually checked against on R615+.
+                match private::read_modern_ocp_windows(g) {
+                    Some(ws) => {
+                        for (rail, w) in ["NVVDD", "MSVDD"].iter().zip(ws) {
+                            let _ = writeln!(
+                                sb,
+                                "    modern {rail}: {} .. {} A, default {} A",
+                                two_dp(w.min_ma as f64 / 1000.0),
+                                two_dp(w.max_ma as f64 / 1000.0),
+                                two_dp(w.default_ma as f64 / 1000.0)
+                            );
+                        }
+                    }
+                    None => {
+                        let _ = writeln!(sb, "    modern windows: not available");
+                    }
+                }
                 Ok(())
             }),
         );
@@ -750,6 +767,80 @@ impl NvidiaBackend {
                         "absent (255 °C marker)".to_string()
                     };
                     let _ = writeln!(sb, "  slot {}  type={:<4} {reading}", c.slot, c.kind);
+                }
+                Ok(())
+            }),
+        );
+
+        // Read-only: 32-bit reads in one batched call, nothing written. See `private::read_registers`.
+        self.section(
+            &mut sb,
+            "Blackwell thermal registers (read-only, experimental)",
+            Box::new(move |_, sb| {
+                if !private::register_reads_available() {
+                    let _ = writeln!(sb, "  (register-op call not exported by this driver)");
+                    return Ok(());
+                }
+                let offsets: Vec<u32> = private::BLACKWELL_THERMAL_REGISTERS.iter().map(|r| r.0).collect();
+                let values = match private::read_registers(g, &offsets) {
+                    Ok(v) => v,
+                    Err(status) => {
+                        let _ = writeln!(sb, "  (register read failed, status {status})");
+                        return Ok(());
+                    }
+                };
+                let _ = writeln!(sb, "  offset      raw         decoded    meaning");
+                for ((offset, decode, meaning), value) in private::BLACKWELL_THERMAL_REGISTERS.into_iter().zip(values) {
+                    let _ = match value {
+                        Some(raw) => writeln!(
+                            sb,
+                            "  0x{offset:08X}  0x{raw:08X}  {:>7} C  {meaning}",
+                            fixed(decode.celsius(raw), 2),
+                        ),
+                        None => writeln!(sb, "  0x{offset:08X}  refused     {meaning}"),
+                    };
+                }
+                Ok(())
+            }),
+        );
+
+        // Read-only, as above. Prints the raw status words and both sides, which Telemetry folds.
+        self.section(
+            &mut sb,
+            "Memory chip temperatures (registers, read-only, experimental)",
+            Box::new(move |_, sb| {
+                if !private::register_reads_available() {
+                    let _ = writeln!(sb, "  (register-op call not exported by this driver)");
+                    return Ok(());
+                }
+                let memory_type = nvapi::ram_type(g).unwrap_or(0);
+                let _ = writeln!(
+                    sb,
+                    "  memory type {memory_type} ({})",
+                    if private::memory_reports_chip_temperatures(memory_type) {
+                        "GDDR6X/GDDR7: chips report"
+                    } else {
+                        "not read in Telemetry"
+                    }
+                );
+                let layout = private::memory_layout(private::register_snapshot(g, &private::memory_layout_registers()));
+                let _ = writeln!(sb, "  clamshell={}  partitions={:?}", layout.clamshell, layout.partitions);
+                if layout.partitions.is_empty() {
+                    let _ = writeln!(sb, "  (no partition flags a chip reading)");
+                    return Ok(());
+                }
+                let registers = private::memory_chip_registers(&layout);
+                let read = private::register_snapshot(g, &registers);
+                for r in &registers {
+                    let _ = writeln!(sb, "  0x{r:08X} = {:08X?}", read(*r));
+                }
+                for chip in private::read_memory_chips(&layout, &read) {
+                    let side = match chip.back {
+                        Some(true) => " (back)",
+                        Some(false) => " (front)",
+                        None => "",
+                    };
+                    let _ = writeln!(sb, "  chip {}{side}: {} °C", chip.label, fixed(chip.celsius, 0));
                 }
                 Ok(())
             }),
