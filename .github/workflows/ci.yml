@@ -41,6 +41,62 @@ jobs:
           grep -q '^\[CPU\]' dump.txt
           grep -q '^Sources' dump.txt
 
+  # The release's Linux package. The glibc it is built against sets the oldest system it runs on, so
+  # it builds in a fixed container rather than on whatever the runner's image has moved to (as Roch
+  # GPU does). The window's system libraries are loaded at run time, so none are installed.
+  package-linux:
+    name: Package (Linux)
+    runs-on: ubuntu-latest
+    container: ubuntu:22.04
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install the compiler, and what the actions below use
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl gcc git libc6-dev binutils
+
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ubuntu-22.04
+
+      - name: Build
+        run: cargo build --release --locked -p roch-monitor
+
+      - name: The binary needs nothing beyond libc and runs on glibc 2.35
+        run: |
+          ldd target/release/RochMonitor
+          ! ldd target/release/RochMonitor | grep -vE 'linux-vdso|ld-linux|libc\.so|libm\.so|libgcc_s\.so'
+          newest=$(readelf -V --wide target/release/RochMonitor | grep -oP 'Name: GLIBC_\K[0-9.]+' | sort -V | tail -1)
+          echo "Newest glibc version it asks for: $newest"
+          [ "$(printf '%s\n' "$newest" 2.35 | sort -V | tail -1)" = 2.35 ]
+          target/release/RochMonitor --dump --seconds 1 | grep -q '^Sources'
+
+      - name: Package
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
+          dir="RochMonitor-$version-linux-x86_64"
+          mkdir -p "$dir" dist
+          install -m755 target/release/RochMonitor "$dir/rochmonitor"
+          strip "$dir/rochmonitor"
+          install -m755 packaging/linux/install.sh "$dir/install.sh"
+          install -m644 packaging/linux/RochMonitor.desktop "$dir/RochMonitor.desktop"
+          install -m644 assets/icon.png "$dir/RochMonitor.png"
+          cp README.md LICENSE THIRD-PARTY-NOTICES.md "$dir/"
+          tar -czf "dist/$dir.tar.gz" "$dir"
+          ls -l dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: roch-monitor-linux
+          path: dist/
+          retention-days: 14
+
   # Everything here runs without the inpoutx64 driver, a PawnIO install or a GPU: the hardware
   # transports are tested on their decoders and refusals, and the window through egui with no display.
   build-and-test:

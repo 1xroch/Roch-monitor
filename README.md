@@ -20,15 +20,26 @@ Like both, it is **read-only**. It changes no setting, and the only writes anywh
 that choose what the next read returns, each documented where it is made. The MSRs are only ever
 read.
 
+## Install
+
+- **Windows:** download `RochMonitor.exe` from
+  [Releases](https://github.com/1xroch/Roch-monitor/releases/latest) and run it. See
+  [Windows prerequisites](#windows-prerequisites) for the drivers it reads through.
+- **Linux (x86-64, glibc 2.35 or newer):** download `RochMonitor-<version>-linux-x86_64.tar.gz` from
+  [Releases](https://github.com/1xroch/Roch-monitor/releases/latest), unpack it and run
+  `./install.sh`. That puts `rochmonitor` in `~/.local/bin` and **Roch Monitor** in your launcher,
+  as your user, without root. `SHA256SUMS.txt` on the release has the checksums.
+
 ## Linux
 
-Build the desktop app and CLI from the same source with stable Rust:
+Or build the desktop app and CLI from the same source with stable Rust:
 
 ```sh
 cargo build --release --locked -p roch-monitor
 ./target/release/RochMonitor
 ./target/release/RochMonitor --dump --json
 ./target/release/RochMonitor --log out.csv --seconds 60
+packaging/linux/install.sh   # optional: install that build to ~/.local/bin and the launcher
 ```
 
 The window runs on Wayland and X11 with OpenGL. The CLI needs no desktop. Run either as your normal
@@ -209,8 +220,10 @@ With Rust stable:
 cargo build --release
 ```
 
-The executable is `target\release\RochMonitor.exe`. Pushing a tag named for the workspace version
-(`v1.0.0`) runs CI and publishes its package as a GitHub release. Run the tests with `cargo test`. Some tests read
+The executable is `target\release\RochMonitor.exe` on Windows and `target/release/RochMonitor` on
+Linux. Pushing a tag named for the workspace version (`v1.0.0`) runs CI and publishes a GitHub
+release with `RochMonitor.exe`, the Linux tarball and `SHA256SUMS.txt`, using
+`docs/releases/<version>.md` as its notes. Run the tests with `cargo test`. Some tests read
 this machine's own counters and firmware tables; none needs the driver.
 
 ### Layout
@@ -219,7 +232,7 @@ this machine's own counters and firmware tables; none needs the driver.
 | --- | --- |
 | `crates/roch-sensors` | The engine: the hardware transports, the sources, the polling threads and the statistics |
 | `crates/roch-monitor` | The window (eframe/egui) and the command line |
-| `crates/roch-core`, `roch-nvidia`, `roch-amd`, `roch-intel` | Roch GPU's crates, vendored unchanged; see `crates/VENDORED.md` |
+| `crates/roch-core`, `roch-nvidia`, `roch-amd`, `roch-intel`, `roch-amdgpu` | Roch GPU's crates, vendored unchanged; see `crates/VENDORED.md` |
 
 ## Licence
 

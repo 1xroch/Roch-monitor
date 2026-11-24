@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Roch Monitor
+GenericName=Hardware monitor
+Comment=Live hardware sensors with current, minimum, maximum and average
+Exec=rochmonitor
+Icon=RochMonitor
+Terminal=false
+Categories=System;Monitor;
+StartupWMClass=RochMonitor
