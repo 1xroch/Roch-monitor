@@ -98,9 +98,12 @@ fn settings_device(
         }),
         _ => {
             // PHY sensors can sit below a controller's MDIO bus instead of on the controller.
+            // `/sys/devices/virtual` is no controller: its `net` holds every virtual interface
+            // (docker0, bridges), and the ACPI thermal zone sits below it.
             if let Some(net) = path
                 .ancestors()
                 .take_while(|parent| parent.starts_with("/sys/devices"))
+                .filter(|parent| *parent != Path::new("/sys/devices/virtual"))
                 .map(|parent| parent.join("net"))
                 .find(|net| net.is_dir())
             {
