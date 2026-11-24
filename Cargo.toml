@@ -15,7 +15,7 @@ version = "1.0.0"
 edition = "2024"
 license = "GPL-3.0-or-later"
 authors = ["Roch Studio"]
-repository = "https://github.com/RochStudio/Roch-monitor"
+repository = "https://github.com/1xroch/Roch-monitor"
 
 [workspace.dependencies]
 # The GPU crates are vendored from Roch GPU (see crates/VENDORED.md). Their `version.workspace`

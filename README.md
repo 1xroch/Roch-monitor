@@ -1,6 +1,6 @@
 # Roch Monitor 1.0.0
 
-[![CI](https://github.com/RochStudio/Roch-monitor/actions/workflows/ci.yml/badge.svg)](https://github.com/RochStudio/Roch-monitor/actions/workflows/ci.yml)
+[![CI](https://github.com/1xroch/Roch-monitor/actions/workflows/ci.yml/badge.svg)](https://github.com/1xroch/Roch-monitor/actions/workflows/ci.yml)
 
 Roch Monitor is a hardware monitor for Windows and Linux:
 every live reading on the machine, grouped by device, each with its **current, minimum, maximum and
