@@ -4,6 +4,7 @@ pub mod board_voltages;
 mod cpu;
 mod hwmon;
 mod io;
+pub mod setup;
 
 use std::fs;
 use std::path::{Path, PathBuf};

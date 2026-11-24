@@ -118,7 +118,9 @@ impl BoardVoltages {
         // SAFETY: geteuid just returns the current effective UID.
         let uid = unsafe { libc::geteuid() };
         open_lock(uid, true)?;
-        let exe = std::env::current_exe()?;
+        // The copy `rochmonitor setup` installed, while it is this build: polkit lets that one
+        // start without a password.
+        let exe = super::setup::helper_program()?;
         let mut command = if uid == 0 {
             Command::new(exe)
         } else {

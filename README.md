@@ -1,4 +1,4 @@
-# Roch Monitor 1.0.0
+# Roch Monitor 1.0.1
 
 [![CI](https://github.com/1xroch/Roch-monitor/actions/workflows/ci.yml/badge.svg)](https://github.com/1xroch/Roch-monitor/actions/workflows/ci.yml)
 
@@ -63,6 +63,10 @@ inputs and dividers used on Gigabyte's X870 TACHYON. Each supply rail stays hidd
 lands in the ATX tolerance band. The collector shares Roch Viewer’s ISA lock and yields to a bound kernel
 hwmon driver. For a terminal with no graphical authorization agent, run
 `./target/release/RochMonitor --dump --board-voltages --seconds 30` and authenticate in the terminal.
+`sudo ~/.local/bin/rochmonitor setup` stops the password prompt: it installs a root-owned copy at
+`/usr/local/bin/rochmonitor` and a polkit rule that lets you start exactly that copy as the collector
+from your own desktop session. The collector only reads; it changes no setting. `rochmonitor setup
+--status` reports the state, and `sudo rochmonitor setup --undo` removes it. Re-run setup after updating.
 
 Linux kernel sensor rows use the labels and channels the driver supplies.
 Per-core VID, DDR5 PMIC ADC, and WHEA are Windows features in Roch Monitor. So are the tray and

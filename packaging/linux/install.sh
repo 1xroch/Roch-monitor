@@ -18,3 +18,6 @@ rm -f "$here/.RochMonitor.desktop.tmp"
 install -Dm644 "$icon" "$data/icons/hicolor/256x256/apps/RochMonitor.png"
 command -v update-desktop-database >/dev/null && update-desktop-database "$data/applications" || true
 echo "Installed: $HOME/.local/bin/rochmonitor (launcher: Roch Monitor)"
+if [ -e /usr/local/bin/rochmonitor ]; then
+  echo "Run 'sudo $HOME/.local/bin/rochmonitor setup' again so the password-free helper matches this version."
+fi

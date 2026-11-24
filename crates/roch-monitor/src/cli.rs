@@ -62,6 +62,10 @@ Window options:
   --settings [PAGE]  open Settings at appearance, colours, text, layout, window or sensors
   --board-voltages   request board voltage readings at startup
 
+Stop asking for the password for the board voltages:
+  sudo rochmonitor setup    install a root-owned copy and a polkit rule
+  rochmonitor setup --status | --show,  sudo rochmonitor setup --undo
+
 Readings come from Linux kernel drivers via /proc and /sys.
 ";
 

@@ -130,4 +130,4 @@ pub fn factories(sys: &SystemInfo, options: Options) -> Vec<(String, Factory)> {
 }
 
 #[cfg(target_os = "linux")]
-pub use linux::{board_voltages, factories};
+pub use linux::{board_voltages, factories, setup};

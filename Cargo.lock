@@ -2474,7 +2474,7 @@ checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
 
 [[package]]
 name = "roch-amd"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "libloading 0.8.9",
  "roch-core",
@@ -2484,14 +2484,14 @@ dependencies = [
 
 [[package]]
 name = "roch-amdgpu"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "roch-core",
 ]
 
 [[package]]
 name = "roch-core"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "chrono",
  "libloading 0.8.9",
@@ -2503,7 +2503,7 @@ dependencies = [
 
 [[package]]
 name = "roch-intel"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "libloading 0.8.9",
  "roch-core",
@@ -2511,7 +2511,7 @@ dependencies = [
 
 [[package]]
 name = "roch-monitor"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "chrono",
  "eframe",
@@ -2527,7 +2527,7 @@ dependencies = [
 
 [[package]]
 name = "roch-nvidia"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "libloading 0.8.9",
  "roch-core",
@@ -2535,7 +2535,7 @@ dependencies = [
 
 [[package]]
 name = "roch-sensors"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "chrono",
  "libc",

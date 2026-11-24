@@ -27,6 +27,10 @@ fn entry(args: &[String]) -> i32 {
     if args == [roch_sensors::sources::board_voltages::HELPER_ARG] {
         return roch_sensors::sources::board_voltages::serve();
     }
+    #[cfg(target_os = "linux")]
+    if args.first().is_some_and(|a| a == "setup") {
+        return roch_sensors::sources::setup::run(&args[1..]);
+    }
     if cli::wants_command_line(args) {
         let _console = console::attach();
         return cli::run(args);
