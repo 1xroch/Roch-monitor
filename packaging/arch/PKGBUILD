@@ -1,0 +1,41 @@
+# Maintainer: Roch Studio <300260898+1xroch@users.noreply.github.com>
+
+# Installs the binary published with a release: nothing is compiled, so no Rust toolchain is needed.
+# It never runs `rochmonitor setup`: reading the board voltages without a password stays the user's step.
+
+pkgname=roch-monitor-bin
+pkgver=1.0.1
+pkgrel=1
+pkgdesc='Live hardware sensors in one window: CPU, memory, board, GPUs, drives and network'
+arch=(x86_64)
+url='https://github.com/1xroch/Roch-monitor'
+license=(GPL-3.0-or-later)
+depends=(glibc libgcc hicolor-icon-theme)
+optdepends=(
+  'libglvnd: the window'
+  'libxkbcommon: the window'
+  'wayland: the window on Wayland'
+  'libx11: the window on X11'
+  'libxcursor: the window on X11'
+  'libxi: the window on X11'
+  'libxkbcommon-x11: the window on X11'
+  'fontconfig: the system fonts'
+  'xdg-utils: opening links from the window'
+  'polkit: reading the board voltages'
+)
+provides=(roch-monitor)
+conflicts=(roch-monitor)
+options=(!debug !strip)
+install=roch-monitor.install
+_dir="RochMonitor-$pkgver-linux-x86_64"
+source=("$_dir.tar.gz::$url/releases/download/v$pkgver/$_dir.tar.gz")
+sha256sums=('4e84eb023e9878e649646554b2f1c393c16dd8cb6ec53808cc56f8ce7faf4c70')
+
+package() {
+  cd "$_dir"
+  install -Dm755 rochmonitor "$pkgdir/usr/bin/rochmonitor"
+  install -Dm644 RochMonitor.desktop "$pkgdir/usr/share/applications/RochMonitor.desktop"
+  install -Dm644 RochMonitor.png "$pkgdir/usr/share/icons/hicolor/256x256/apps/RochMonitor.png"
+  install -Dm644 THIRD-PARTY-NOTICES.md "$pkgdir/usr/share/licenses/$pkgname/THIRD-PARTY-NOTICES.md"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/roch-monitor/README.md"
+}
