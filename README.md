@@ -66,7 +66,8 @@ hwmon driver. For a terminal with no graphical authorization agent, run
 `sudo ~/.local/bin/rochmonitor setup` stops the password prompt: it installs a root-owned copy at
 `/usr/local/bin/rochmonitor` and a polkit rule that lets you start exactly that copy as the collector
 from your own desktop session. The collector only reads; it changes no setting. `rochmonitor setup
---status` reports the state, and `sudo rochmonitor setup --undo` removes it. Re-run setup after updating.
+--status` reports the state, and `sudo rochmonitor setup --undo` removes it. Re-run setup after updating. Installed from a package (`/usr/bin/rochmonitor`), setup names that file directly, so
+updates keep working without running it again.
 
 Linux kernel sensor rows use the labels and channels the driver supplies.
 Per-core VID, DDR5 PMIC ADC, and WHEA are Windows features in Roch Monitor. So are the tray and
